@@ -1,0 +1,130 @@
+import User from "../models/user.model.js";
+import Message from "../models/message.model.js"
+
+import cloudinary from "../lib/cloudinary.js"
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getReceiverSocketId, io } from "../lib/socket.js";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+export const getUsersForSidebar = async (req,res)=>{
+    try 
+    {
+        const loggedInUserId = req.user._id;
+        const filteredUsers = await User.find({_id: {$ne: loggedInUserId}}).select("-password");
+        res.status(200).json(filteredUsers);    
+    } 
+    catch (error) 
+    {
+        console.log("Error in getUsersForSidebar : ", error.message);
+        return res.status(500).json({error: "Internal server error"})
+    }
+}
+
+export const getMessages = async (req,res)=>{
+    try 
+    {
+        const {id:userTochatId}= req.params;
+        const myId = req.user._id;
+        
+        const messages = await Message.find({
+            $or:[
+                {senderId:myId, receiverId:userTochatId},
+                {senderId:userTochatId, receiverId:myId},
+            ]
+        })
+
+        return res.status(200).json(messages)
+    }
+    catch (error) 
+    {
+        console.log("error in message controller : ", error.message);
+        return res.status(500).json({error: "Internal server error"})
+    }
+}
+
+export const sendMessage = async (req,res)=>{
+    try 
+    {
+        const {text, image} = req.body;
+        const {id : receiverId} = req.params;
+        const senderId = req.user._id;
+        
+        let imageUrl;
+        if(image)
+        {
+            const uploadResponse = await cloudinary.uploader.upload(image);
+            imageUrl = uploadResponse.secure_url;
+        }
+
+        const newMessage = new Message({
+            senderId,
+            receiverId,
+            text,
+            image : imageUrl
+        })
+
+        await newMessage.save();
+
+        //todo
+        const receiverSocketId = getReceiverSocketId(receiverId)
+        if(receiverSocketId)
+        {
+            io.to(receiverSocketId).emit("newMessage",newMessage)
+        }
+
+        return res.status(200).json(newMessage)
+    }
+    catch (error)
+    {
+        console.log("error in sent message controller : ", error.message);
+        return res.status(500).json({error: "Internal server error"})
+    }
+}
+
+export const summarizeMessages = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const myId = req.user._id;
+
+    const messages = await Message.find({
+      $or: [
+        { senderId: myId, receiverId: userId },
+        { senderId: userId, receiverId: myId },
+      ],
+    }).sort({ createdAt: -1 }).limit(30);
+
+    if (messages.length < 5) {
+      return res.status(400).json({ message: "Not enough messages to summarize." });
+    }
+
+    //PRIVACY MASKING: Replacing real names/IDs with "User A" and "User B"
+    const maskedHistory = messages
+      .reverse()
+      .map((m) => {
+        const role = m.senderId.toString() === myId.toString() ? "User A (Me)" : "User B";
+        return `${role}: ${m.text}`;
+      })
+      .join("\n");
+
+    //AI Processing
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const prompt = `You are a professional chat assistant. Summarize the following conversation.
+    FORMAT RULES:
+    - Use clear bullet points.
+    - Start each point on a new line.
+    - Do not use introductory phrases like "Here is a summary".
+    - Keep it under 4 bullets.
+
+    Chat logs:
+    ${maskedHistory}`;
+
+    const result = await model.generateContent(prompt);
+    const summary = result.response.text();
+
+    res.status(200).json({ summary });
+  } catch (error) {
+    console.error("Summarization Error:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
