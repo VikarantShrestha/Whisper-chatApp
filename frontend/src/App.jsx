@@ -20,7 +20,7 @@ const App = () => {
   const {authUser,checkAuth, isCheckingAuth, onlineUsers} = useAuthStore()
   const {theme} = useThemeStore()
 
-  const { subscribeToMessages, unsubscribeFromMessages } = useChatStore()
+  const { subscribeToMessages, unsubscribeFromMessages, selectedUser } = useChatStore()
 
   console.log({onlineUsers})
 
@@ -36,7 +36,7 @@ const App = () => {
     }
 
     return () => unsubscribeFromMessages();
-  }, [authUser, subscribeToMessages, unsubscribeFromMessages]);
+  }, [authUser, selectedUser, subscribeToMessages, unsubscribeFromMessages]);
 
   if(isCheckingAuth && !authUser)
   {

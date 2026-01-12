@@ -154,6 +154,29 @@ export const searchUsers = async (req, res) => {
   }
 };
 
+export const markMessagesAsSeen = async (req, res) => {
+  try {
+    const { id: senderId } = req.params;
+    const receiverId = req.user._id;    
+
+    await Message.updateMany(
+      { senderId, receiverId, seen: false },
+      { $set: { seen: true } }
+    );
+
+    // Notifying the original sender via socket that their messages were seen
+    const senderSocketId = getReceiverSocketId(senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messagesSeen", { seenBy: receiverId });
+    }
+
+    res.status(200).json({ message: "Messages marked as seen" });
+  } catch (error) {
+    console.error("Error in markMessagesAsSeen:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export const summarizeMessages = async (req, res) => {
   try {
     const { userId } = req.params;

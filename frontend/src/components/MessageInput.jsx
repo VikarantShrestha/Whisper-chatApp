@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X, Smile } from "lucide-react";
+import useAuthStore from "../store/useAuthStore";
 import toast from "react-hot-toast";
 import axiosInstance from "../lib/axios";
 
@@ -8,7 +9,9 @@ const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
-  const { sendMessage } = useChatStore();
+  const typingTimeoutRef = useRef(null);
+  const { sendMessage,selectedUser } = useChatStore();
+  const { authUser } = useAuthStore();
 
   const [showGifs, setShowGifs] = useState(false);
   const [gifs, setGifs] = useState([]);
@@ -59,6 +62,19 @@ const MessageInput = () => {
   const removeImage = () => {
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleTyping = (e) => {
+    setText(e.target.value);
+    const socket = useAuthStore.getState().socket;
+
+    socket.emit("typing", { senderId: authUser._id, receiverId: selectedUser._id });
+
+    // Stoping typing indicator after 2 seconds of no activity
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit("stopTyping", { senderId: authUser._id, receiverId: selectedUser._id });
+    }, 2000);
   };
 
   const handleSendMessage = async (e) => {
@@ -159,7 +175,7 @@ const MessageInput = () => {
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"
             placeholder="Type a message..."
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleTyping}
           />
           <input
             type="file"

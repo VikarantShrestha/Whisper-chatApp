@@ -13,6 +13,7 @@ export const useChatStore = create((set, get) => ({
     notifications: [],
     summary: null,
     isSummarizing: false,
+    typingUsers: {},
 
     getUsers: async () => {
         set({ isUsersLoading: true });
@@ -58,6 +59,8 @@ export const useChatStore = create((set, get) => ({
 
         // Cleaning up any existing listener first to avoid duplicates
         socket.off("newMessage");
+        socket.off("userTyping");
+        socket.off("userStoppedTyping");
 
         socket.on("newMessage", (newMessage) => {
             const { selectedUser, messages, users, notifications } = get();
@@ -70,8 +73,8 @@ export const useChatStore = create((set, get) => ({
                     messages: [...messages, newMessage],
                 });
             } else {
-                // IF message is from someone else:
-                // 1. Show a toast notification
+                // IF message is from someone else
+                // Show a toast notification
                 const sender = users.find((u) => u._id === newMessage.senderId);
                 const senderName = sender ? sender.fullName : "Someone";
 
@@ -79,10 +82,36 @@ export const useChatStore = create((set, get) => ({
                     icon: '💬',
                 });
 
-                // 2. Add to notifications array
+                // Add to notifications array
                 set({
                     notifications: [...notifications, newMessage],
                 });
+            }
+        });
+
+        socket.on("userTyping", ({ senderId }) => {
+            const { selectedUser } = get();
+            // Only showing indicator if the sender is the user we are currently viewing
+            if (selectedUser?._id === senderId) {
+                set((state) => ({
+                    typingUsers: { ...state.typingUsers, [senderId]: true }
+                }));
+            }
+        });
+
+        socket.on("userStoppedTyping", ({ senderId }) => {
+            set((state) => ({
+                typingUsers: { ...state.typingUsers, [senderId]: false }
+            }));
+        });
+
+        socket.on("messagesSeen", ({ seenBy }) => {
+            const { selectedUser, messages } = get();
+            // If we are currently looking at the person who just saw our messages
+            if (selectedUser?._id === seenBy) {
+            set({
+                messages: messages.map((m) => ({ ...m, seen: true })),
+            });
             }
         });
     },
@@ -90,19 +119,28 @@ export const useChatStore = create((set, get) => ({
     unsubscribeFromMessages: () => {
         const socket = useAuthStore.getState().socket
         if (socket) {
-            socket.off("newMessage")
+            socket.off("newMessage");
+            socket.off("userTyping");
+            socket.off("userStoppedTyping");
         }
     },
 
     setSelectedUser: (selectedUser) => {
         set({ selectedUser });
 
-        // CLEAR notifications for this user when you click on them
         if (selectedUser) {
             const filteredNotifications = get().notifications.filter(
                 (n) => n.senderId !== selectedUser._id
             );
             set({ notifications: filteredNotifications });
+        }
+    },
+
+    markMessagesAsSeen: async (senderId) => {
+        try {
+            await axiosInstance.put(`/messages/seen/${senderId}`);
+        } catch (error) {
+            console.log("Error marking messages as seen:", error);
         }
     },
 
