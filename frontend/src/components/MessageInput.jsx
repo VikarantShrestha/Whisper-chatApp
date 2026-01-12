@@ -1,13 +1,46 @@
 import { useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
-import { Image, Send, X } from "lucide-react";
+import { Image, Send, X, Smile } from "lucide-react";
 import toast from "react-hot-toast";
+import axiosInstance from "../lib/axios";
 
 const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
   const { sendMessage } = useChatStore();
+
+  const [showGifs, setShowGifs] = useState(false);
+  const [gifs, setGifs] = useState([]);
+  const [gifQuery, setGifQuery] = useState("");
+
+  const fetchGifs = async () => {
+    try {
+      const res = await axiosInstance.get("/messages/gifs/trending");
+      setGifs(res.data);
+    } catch (error) {
+      toast.error("Failed to load GIFs");
+    }
+  };
+
+  const handleGifSearch = async (e) => {
+    e.preventDefault();
+    if (!gifQuery.trim()) return;
+    try {
+      const res = await axiosInstance.get(`/messages/gifs/search?query=${gifQuery}`);
+      setGifs(res.data);
+    } catch (error) {
+      toast.error("Search failed");
+    }
+  };
+
+  const handleSendGif = (gifUrl) => {
+    sendMessage({
+      text: "",
+      image: gifUrl, // Sends the Giphy URL directly
+    });
+    setShowGifs(false);
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -48,7 +81,44 @@ const MessageInput = () => {
   };
 
   return (
-    <div className="p-4 w-full">
+    <div className="p-4 w-full relative">
+
+      {/* GIF PICKER POPUP */}
+      {showGifs && (
+        <div className="absolute bottom-20 left-4 z-50 bg-base-200 p-3 rounded-xl shadow-2xl border border-base-300 w-72 h-96 flex flex-col gap-3">
+          {/* Search Bar Wrapper */}
+          <form onSubmit={handleGifSearch} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Search GIFs..."
+              className="input input-sm input-bordered w-full bg-base-100"
+              value={gifQuery}
+              onChange={(e) => setGifQuery(e.target.value)}
+            />
+            <button type="submit" className="hidden">Search</button>
+          </form>
+
+          {/* GIF Grid - Scrollable area */}
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-2 pr-1 custom-scrollbar">
+            {gifs.length === 0 ? (
+              <div className="col-span-2 text-center py-10 text-zinc-500 text-sm">
+                No GIFs found...
+              </div>
+            ) : (
+              gifs.map((gif) => (
+                <img
+                  key={gif.id}
+                  src={gif.preview}
+                  alt="gif"
+                  className="rounded-lg cursor-pointer hover:opacity-80 transition-opacity w-full h-24 object-cover bg-base-300"
+                  onClick={() => handleSendGif(gif.url)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {imagePreview && (
         <div className="mb-3 flex items-center gap-2">
           <div className="relative">
@@ -71,6 +141,19 @@ const MessageInput = () => {
 
       <form onSubmit={handleSendMessage} className="flex items-center gap-2">
         <div className="flex-1 flex gap-2">
+
+          {/* gif button */}
+          <button
+            type="button"
+            className={`btn btn-sm btn-circle ${showGifs ? "text-primary" : "text-zinc-400"}`}
+            onClick={() => {
+              setShowGifs(!showGifs);
+              if (!showGifs) fetchGifs(); // Triggers the fetch only when opening
+            }}
+          >
+            <Smile size={20} />
+          </button>
+
           <input
             type="text"
             className="w-full input input-bordered rounded-lg input-sm sm:input-md"

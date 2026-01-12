@@ -53,8 +53,15 @@ export const sendMessage = async (req,res)=>{
         let imageUrl;
         if(image)
         {
-            const uploadResponse = await cloudinary.uploader.upload(image);
-            imageUrl = uploadResponse.secure_url;
+            if(image.startsWith("http"))
+            {
+                imageUrl = image;
+            }
+            else
+            {
+                const uploadResponse = await cloudinary.uploader.upload(image);
+                imageUrl = uploadResponse.secure_url;
+            }
         }
 
         const newMessage = new Message({
@@ -81,6 +88,71 @@ export const sendMessage = async (req,res)=>{
         return res.status(500).json({error: "Internal server error"})
     }
 }
+
+export const getTrendingGifs = async (req, res) => {
+  try {
+    const apiKey = process.env.GIPHY_API_KEY;
+    // We fetch trending gifs with a limit of 10
+    const response = await fetch(
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=10&rating=g`
+    );
+    
+    if (!response.ok) throw new Error("Giphy API error");
+
+    const data = await response.json();
+    
+    // Map the data to only send what the frontend needs
+    const gifs = data.data.map((gif) => ({
+      id: gif.id,
+      preview: gif.images.fixed_height_small.url, // For the picker
+      url: gif.images.fixed_height.url,           // For the actual message
+    }));
+
+    res.status(200).json(gifs);
+  } catch (error) {
+    console.error("Giphy Error:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const searchGifs = async (req, res) => {
+  try {
+    const { query } = req.query;
+    const apiKey = process.env.GIPHY_API_KEY;
+    
+    const response = await fetch(
+      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${query}&limit=10&rating=g`
+    );
+    
+    const data = await response.json();
+    const gifs = data.data.map((gif) => ({
+      id: gif.id,
+      preview: gif.images.fixed_height_small.url,
+      url: gif.images.fixed_height.url,
+    }));
+
+    res.status(200).json(gifs);
+  } catch (error) {
+    res.status(500).json({ message: "Search failed" });
+  }
+};
+
+export const searchUsers = async (req, res) => {
+  try {
+    const { query } = req.query; // Get search term from frontend
+    const loggedInUserId = req.user._id;
+
+    const users = await User.find({
+      _id: { $ne: loggedInUserId }, // Don't include the logged-in user
+      fullName: { $regex: query, $options: "i" }, 
+    }).select("-password"); // Exclude passwords for security
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("Error in searchUsers: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 export const summarizeMessages = async (req, res) => {
   try {
