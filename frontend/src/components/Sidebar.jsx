@@ -5,7 +5,7 @@ import SidebarSkeleton from "./skeletons/SidebarSkeleton";
 import { Users, Search } from "lucide-react";
 
 const Sidebar = () => {
-  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading, notifications } = useChatStore();
+  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading } = useChatStore();
 
   const { onlineUsers } = useAuthStore();
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
@@ -67,7 +67,7 @@ const Sidebar = () => {
       <div className="overflow-y-auto w-full py-3">
         {filteredUsers.map((user) => {
           // CALCULATE unread count for this specific user
-          const unreadCount = notifications.filter(n => n.senderId === user._id).length;
+          const unreadCount = user.unreadCount || 0;
 
           return (
             <button
@@ -85,6 +85,14 @@ const Sidebar = () => {
                 {onlineUsers.includes(user._id) && (
                   <span className="absolute bottom-0 right-0 size-3 bg-green-500 rounded-full ring-2 ring-zinc-900" />
                 )}
+
+                {/* Mobile Badge Added so mobile users see they have a message */}
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 size-4 bg-primary text-primary-content text-[8px] rounded-full flex items-center justify-center lg:hidden">
+                    {unreadCount}
+                  </span>
+                )}
+
               </div>
 
               {/* User info */}

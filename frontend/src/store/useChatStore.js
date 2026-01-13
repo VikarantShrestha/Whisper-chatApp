@@ -10,7 +10,6 @@ export const useChatStore = create((set, get) => ({
     selectedUser: null,
     isUsersLoading: false,
     isMessagesLoading: false,
-    notifications: [],
     summary: null,
     isSummarizing: false,
     typingUsers: {},
@@ -63,7 +62,7 @@ export const useChatStore = create((set, get) => ({
         socket.off("userStoppedTyping");
 
         socket.on("newMessage", (newMessage) => {
-            const { selectedUser, messages, users, notifications } = get();
+            const { selectedUser, messages, users } = get();
 
             const isFromSelectedUser = selectedUser && newMessage.senderId === selectedUser._id;
 
@@ -72,19 +71,24 @@ export const useChatStore = create((set, get) => ({
                 set({
                     messages: [...messages, newMessage],
                 });
+
+                // Tell the backend we saw this new message immediately
+                // get().markMessagesAsSeen(selectedUser._id);
             } else {
                 // IF message is from someone else
                 // Show a toast notification
                 const sender = users.find((u) => u._id === newMessage.senderId);
-                const senderName = sender ? sender.fullName : "Someone";
 
                 toast.success(`New message from ${sender?.fullName || "Someone"}`, {
                     icon: '💬',
                 });
 
-                // Add to notifications array
                 set({
-                    notifications: [...notifications, newMessage],
+                    users: users.map((u) =>
+                        u._id === newMessage.senderId
+                            ? { ...u, unreadCount: (u.unreadCount || 0) + 1 }
+                            : u
+                    ),
                 });
             }
         });
@@ -109,9 +113,9 @@ export const useChatStore = create((set, get) => ({
             const { selectedUser, messages } = get();
             // If we are currently looking at the person who just saw our messages
             if (selectedUser?._id === seenBy) {
-            set({
-                messages: messages.map((m) => ({ ...m, seen: true })),
-            });
+                set({
+                    messages: messages.map((m) => ({ ...m, seen: true })),
+                });
             }
         });
     },
@@ -129,10 +133,11 @@ export const useChatStore = create((set, get) => ({
         set({ selectedUser });
 
         if (selectedUser) {
-            const filteredNotifications = get().notifications.filter(
-                (n) => n.senderId !== selectedUser._id
-            );
-            set({ notifications: filteredNotifications });
+            set({
+                users: get().users.map((u) =>
+                    u._id === selectedUser._id ? { ...u, unreadCount: 0 } : u
+                ),
+            });
         }
     },
 
@@ -146,13 +151,11 @@ export const useChatStore = create((set, get) => ({
 
     getChatSummary: async (userId) => {
         set({ isSummarizing: true, summary: null });
-        try 
-        {
+        try {
             const res = await axiosInstance.get(`/messages/summarize/${userId}`);
             set({ summary: res.data.summary });
         }
-        catch (error) 
-        {
+        catch (error) {
             toast.error(error.response?.data?.message || "Failed to generate summary");
         } finally {
             set({ isSummarizing: false });
